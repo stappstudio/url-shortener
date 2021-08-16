@@ -8,6 +8,8 @@ kv_namespaces = [
   { binding = "LINKS", preview_id = "<KV_PREVIEW_ID>", id = "<KV_ID>" }
 ]
 
+vars = { BASIC_USER = "user", BASIC_PASS = "pass" }
+
 [env.production]
 zone_id = "<ZONE_ID>"
 

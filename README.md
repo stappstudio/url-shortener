@@ -11,3 +11,13 @@ A simple URL Shortener using only Cloudflare Workers :)
 3) Create a KV with `wrangler kv:namespace create "LINKS" --preview` and update it's data on wrangler.toml
 
 * If the route redirection is not working, try setting up from CloudFlare dashboard at your zone -> Workers -> "Add route"
+
+#### Creating short URLs
+
+Make a POST request to `<WORKER URL>/create` using the basic auth credentials configured at `wrangler.toml`
+
+```
+{
+  "url": "<URL TO SHORT>
+}
+```

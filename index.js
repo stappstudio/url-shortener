@@ -1,4 +1,10 @@
 import { Router } from 'itty-router'
+import { customAlphabet } from 'nanoid'
+
+const nanoid = customAlphabet(
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  4,
+);
 
 // Create a new router
 const router = Router()
@@ -20,53 +26,128 @@ router.get("/:path", async ({ params }) => {
   return Response.redirect(route, 302)
 })
 
-router.post("/create", async ({ params }) => {
-  return new Response("Not yet implemented", { status:  501} )
-})
+router.post("/create", async request => {
+  console.log(request)
 
-/*
-This shows a different HTTP method, a POST.
+  // The "Authorization" header is sent when authenticated.
+  if (request.headers.has('Authorization')) {
+    // Throws exception when authorization fails.
+    const { user, pass } = basicAuthentication(request)
+    verifyCredentials(user, pass)
 
-Try send a POST request using curl or another tool.
+    try {
+      // Get body
+      const body = await request.json()
 
-Try the below curl command to send JSON:
+      if ('url' in body) {
+        // Generate unique identifier
+        const id = nanoid()
 
-$ curl -X POST <worker> -H "Content-Type: application/json" -d '{"abc": "def"}'
-*/
-router.post("/post", async request => {
-  // Create a base object with some fields.
-  let fields = {
-    "asn": request.cf.asn,
-    "colo": request.cf.colo
+        // Save to workers
+        await LINKS.put(id, body.url)
+
+        // Respond with the id
+        return new Response(`Created short link at ${id}`, { status: 201 })
+      }
+      else {
+        return new Response('Bad Request', { status: 400 })
+      }
+    }
+    catch (e) {
+      return new Response('Bad Request', { status: 400 })
+    }
   }
 
-  // If the POST data is JSON then attach it to our response.
-  if (request.headers.get("Content-Type") === "application/json") {
-    fields["json"] = await request.json()
-  }
-
-  // Serialise the JSON to a string.
-  const returnData = JSON.stringify(fields, null, 2);
-
-  return new Response(returnData, {
+  // Not authenticated.
+  return new Response('Missing credentials!', {
+    status: 401,
     headers: {
-      "Content-Type": "application/json"
+      // Prompts the user for credentials.
+      'WWW-Authenticate': 'Basic realm="my scope", charset="UTF-8"'
     }
   })
 })
 
-/*
-This is the last route we define, it will match anything that hasn't hit a route we've defined
-above, therefore it's useful as a 404 (and avoids us hitting worker exceptions, so make sure to include it!).
-
-Visit any page that doesn't exist (e.g. /foobar) to see it in action.
-*/
+/* 404 catch-all */
 router.all("*", () => new Response("Not found!", { status: 404 }))
+
+// Error handler
+const errorHandler = error =>
+  new Response(error.reason || 'Server Error', { status: error.status || 500 })
 
 /*
 This snippet ties our worker to the router we deifned above, all incoming requests
 are passed to the router where your routes are called and the response is sent.
 */
 addEventListener('fetch', (e) => {
-  e.respondWith(router.handle(e.request))
+  e.respondWith(router.handle(e.request).catch(errorHandler))
 })
+
+/*
+Basic auth code is from Cloudflare example
+https://developers.cloudflare.com/workers/examples/basic-auth
+*/
+
+/**
+ * Throws exception on verification failure.
+ * @param {string} user
+ * @param {string} pass
+ * @throws {UnauthorizedException}
+ */
+function verifyCredentials(user, pass) {
+  if (BASIC_USER !== user) {
+    throw new UnauthorizedException('Invalid username.')
+  }
+
+  if (BASIC_PASS !== pass) {
+    throw new UnauthorizedException('Invalid password.')
+  }
+}
+/**
+ * Parse HTTP Basic Authorization value.
+ * @param {Request} request
+ * @throws {BadRequestException}
+ * @returns {{ user: string, pass: string }}
+ */
+function basicAuthentication(request) {
+  const Authorization = request.headers.get('Authorization')
+
+  const [scheme, encoded] = Authorization.split(' ')
+
+  // The Authorization header must start with "Basic", followed by a space.
+  if (!encoded || scheme !== 'Basic') {
+    throw new BadRequestException('Malformed authorization header.')
+  }
+
+  // Decodes the base64 value and performs unicode normalization.
+  // @see https://datatracker.ietf.org/doc/html/rfc7613#section-3.3.2 (and #section-4.2.2)
+  // @see https://dev.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String/normalize
+  const decoded = atob(encoded).normalize()
+
+  // The username & password are split by the first colon.
+  //=> example: "username:password"
+  const index = decoded.indexOf(':')
+
+  // The user & password are split by the first colon and MUST NOT contain control characters.
+  // @see https://tools.ietf.org/html/rfc5234#appendix-B.1 (=> "CTL = %x00-1F / %x7F")
+  if (index === -1 || /[\0-\x1F\x7F]/.test(decoded)) {
+    throw new BadRequestException('Invalid authorization value.')
+  }
+
+  return {
+    user: decoded.substring(0, index),
+    pass: decoded.substring(index + 1),
+  }
+}
+
+function UnauthorizedException(reason) {
+  this.status = 401
+  this.statusText = 'Unauthorized'
+  this.reason = reason
+}
+
+function BadRequestException(reason) {
+  this.status = 400
+  this.statusText = 'Bad Request'
+  this.reason = reason
+}
