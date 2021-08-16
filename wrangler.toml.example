@@ -1,0 +1,14 @@
+name = "url-shortener"
+type = "webpack"
+workers_dev = true
+
+account_id = "<ACCOUNT_ID>"
+
+kv_namespaces = [ 
+  { binding = "LINKS", preview_id = "<KV_PREVIEW_ID>", id = "<KV_ID>" }
+]
+
+[env.production]
+zone_id = "<ZONE_ID>"
+
+route = "<ROUTE WILDCARD>"
